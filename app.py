@@ -20,7 +20,6 @@ def obtener_ahora_chile():
 # --- 2. DISEÑO CSS ESTILO APP MÓVIL ---
 st.markdown("""
     <style>
-    /* Fondo general gris azulado suave */
     .stApp, [data-testid="stAppViewContainer"] {
         background-color: #F4F7F9 !important;
         color: #1E293B !important;
@@ -31,7 +30,6 @@ st.markdown("""
         background-color: rgba(0,0,0,0) !important;
     }
 
-    /* Pestañas (Tabs) */
     button[data-baseweb="tab"] {
         font-size: 16px !important;
         font-weight: 700 !important;
@@ -39,7 +37,6 @@ st.markdown("""
         padding: 10px 16px !important;
     }
 
-    /* Botones principales de acción */
     .stButton > button {
         width: 100% !important;
         height: 54px !important;
@@ -55,19 +52,16 @@ st.markdown("""
         transform: scale(0.98);
     }
     
-    /* Botón Inicio Verde */
     div.stButton > button[key="btn_now_in"] {
         background: linear-gradient(135deg, #2E7D32, #1B5E20) !important;
         color: white !important;
     }
     
-    /* Botón Término Celeste */
     div.stButton > button[key="btn_now_fi"] {
         background: linear-gradient(135deg, #0288D1, #01579B) !important;
         color: white !important;
     }
 
-    /* Botón Guardar Final Azul */
     div.stButton > button[key="btn_save_final"] {
         background: linear-gradient(135deg, #2563EB, #1D4ED8) !important;
         color: white !important;
@@ -84,7 +78,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Bases de datos CSV
+# Archivos de persistencia
 USER_DB = "perfil_usuario.csv"
 EPISODES_DB = "bitacora_episodios.csv"
 
@@ -96,17 +90,25 @@ def cargar_datos(filename, columnas):
         return pd.read_csv(filename)
     return pd.DataFrame(columns=columnas)
 
-# Inicializar estados de hora en sesión con la hora local de Chile
+# --- 3. INICIALIZACIÓN Y RESET DE ESTADO DEL FORMULARIO ---
 ahora_cl = obtener_ahora_chile()
-if "hora_inicio_auto" not in st.session_state:
-    st.session_state["hora_inicio_auto"] = ahora_cl.time()
-if "fecha_inicio_auto" not in st.session_state:
-    st.session_state["fecha_inicio_auto"] = ahora_cl.date()
 
-if "hora_termino_auto" not in st.session_state:
-    st.session_state["hora_termino_auto"] = ahora_cl.time()
-if "fecha_termino_auto" not in st.session_state:
-    st.session_state["fecha_termino_auto"] = ahora_cl.date()
+def resetear_formulario():
+    ahora = obtener_ahora_chile()
+    st.session_state["f_in"] = ahora.date()
+    st.session_state["h_in"] = ahora.time()
+    st.session_state["m_in"] = 5
+    st.session_state["sintomas"] = []
+    st.session_state["med"] = "Salbutamol / Rescate"
+    st.session_state["puffs"] = "2 Puffs"
+    st.session_state["ubicacion"] = "Casa / Habitación"
+    st.session_state["f_fi"] = ahora.date()
+    st.session_state["h_fi"] = ahora.time()
+    st.session_state["m_fi"] = 2
+    st.session_state["obs"] = ""
+
+if "f_in" not in st.session_state:
+    resetear_formulario()
 
 # Diccionario Multiidioma
 DICCIONARIO = {
@@ -187,75 +189,76 @@ with tab_reg:
     # 1. BOTÓN SUPERIOR DE INICIO
     if st.button(txt["btn_inicio_ahora"], key="btn_now_in"):
         ahora = obtener_ahora_chile()
-        st.session_state["hora_inicio_auto"] = ahora.time()
-        st.session_state["fecha_inicio_auto"] = ahora.date()
+        st.session_state["f_in"] = ahora.date()
+        st.session_state["h_in"] = ahora.time()
         st.toast("🟢 Fecha y hora de inicio capturadas automáticamente", icon="⏱️")
         st.rerun()
 
     st.markdown("### ⏱️ Datos del Inicio")
     col_t1, col_t2 = st.columns(2)
     with col_t1:
-        f_in = st.date_input("Fecha Inicio", st.session_state["fecha_inicio_auto"], key="input_f_in")
-        h_in = st.time_input("Hora Inicio", st.session_state["hora_inicio_auto"], key="input_h_in")
+        f_in_val = st.date_input("Fecha Inicio", key="f_in")
+        h_in_val = st.time_input("Hora Inicio", key="h_in")
     with col_t2:
-        m_in = st.slider(txt["malestar_in"], 1, 10, value=5, key="input_m_in")
+        m_in_val = st.slider(txt["malestar_in"], 1, 10, key="m_in")
 
-    sintomas_sel = st.multiselect(
+    sintomas_val = st.multiselect(
         txt["sintoma"], 
         options=txt["sintomas_lista"],
-        default=[txt["sintomas_lista"][0]],
-        key="input_sintomas"
+        key="sintomas"
     )
 
     st.markdown("---")
     st.markdown(f"### {txt['med_tit']}")
-    med = st.selectbox("Medicamento", ["Salbutamol / Rescate", "Inhalador Corticoide", "Corticoide Oral", "Ninguno", "Otro"], key="input_med")
-    puffs = st.radio(txt["puffs"], ["0", "1 Puff", "2 Puffs", "3+ Puffs"], horizontal=True, index=2, key="input_puffs")
-    ubicacion = st.text_input(txt["ubicacion"], value="Casa / Habitación", key="input_ubicacion")
+    med_val = st.selectbox("Medicamento", ["Salbutamol / Rescate", "Inhalador Corticoide", "Corticoide Oral", "Ninguno", "Otro"], key="med")
+    puffs_val = st.radio(txt["puffs"], ["0", "1 Puff", "2 Puffs", "3+ Puffs"], horizontal=True, key="puffs")
+    ubicacion_val = st.text_input(txt["ubicacion"], key="ubicacion")
 
     st.markdown("---")
     
-    # 2. BOTÓN DE TÉRMINO (Ubicado después de Entorno/Ubicación y ANTES de Observaciones)
+    # 2. BOTÓN DE TÉRMINO
     if st.button(txt["btn_termino_ahora"], key="btn_now_fi"):
         ahora = obtener_ahora_chile()
-        st.session_state["hora_termino_auto"] = ahora.time()
-        st.session_state["fecha_termino_auto"] = ahora.date()
+        st.session_state["f_fi"] = ahora.date()
+        st.session_state["h_fi"] = ahora.time()
         st.toast("🩵 Fecha y hora de término capturadas", icon="✨")
         st.rerun()
 
     st.markdown("### 🩵 Datos del Término")
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        f_fi = st.date_input("Fecha Término", st.session_state["fecha_termino_auto"], key="input_f_fi")
-        h_fi = st.time_input("Hora Término", st.session_state["hora_termino_auto"], key="input_h_fi")
+        f_fi_val = st.date_input("Fecha Término", key="f_fi")
+        h_fi_val = st.time_input("Hora Término", key="h_fi")
     with col_f2:
-        m_fi = st.slider(txt["malestar_fi"], 1, 10, value=2, key="input_m_fi")
+        m_fi_val = st.slider(txt["malestar_fi"], 1, 10, key="m_fi")
 
-    # 3. CAMPO DE OBSERVACIONES
     st.markdown("---")
-    obs = st.text_area(txt["obs"], placeholder="Escribe notas relevantes aquí...", key="input_obs")
+    obs_val = st.text_area(txt["obs"], placeholder="Escribe notas relevantes aquí...", key="obs")
 
-    # 4. ÚNICO BOTÓN QUE GUARDA EN LA BITÁCORA (DESPUÉS de Observaciones)
+    # 3. GUARDADO Y LIMPIEZA DE FORMULARIO
     if st.button(txt["btn_guardar"], key="btn_save_final"):
-        str_sintomas = ", ".join(sintomas_sel) if sintomas_sel else "No especificado"
+        str_sintomas = ", ".join(sintomas_val) if sintomas_val else "Ninguno reportado"
         
         nueva_fila = pd.DataFrame([[
-            f_in.strftime("%Y-%m-%d"),
-            h_in.strftime("%H:%M"),
-            f_fi.strftime("%Y-%m-%d"),
-            h_fi.strftime("%H:%M"),
+            f_in_val.strftime("%Y-%m-%d"),
+            h_in_val.strftime("%H:%M"),
+            f_fi_val.strftime("%Y-%m-%d"),
+            h_fi_val.strftime("%H:%M"),
             str_sintomas,
-            m_in,
-            m_fi,
-            med,
-            puffs,
-            ubicacion,
-            obs
+            m_in_val,
+            m_fi_val,
+            med_val,
+            puffs_val,
+            ubicacion_val,
+            obs_val
         ]], columns=cols_ep)
         
         df_final = pd.concat([df_ep, nueva_fila], ignore_index=True)
         guardar_datos(df_final, EPISODES_DB)
-        st.success("¡Episodio guardado exitosamente en la bitácora!")
+        
+        # Limpieza de formulario
+        resetear_formulario()
+        st.success("✅ ¡Registro guardado exitosamente en la bitácora!")
         st.rerun()
 
 # ==================== PESTAÑA 2: BITÁCORA Y MÉTRICAS ====================
