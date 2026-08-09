@@ -1,28 +1,31 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+import pytz
 import os
 
-# --- 1. CONFIGURACIÓN DE PÁGINA E INTERFAZ ---
+# --- 1. CONFIGURACIÓN DE PÁGINA Y ZONA HORARIA CHILE ---
 st.set_page_config(page_title="Control de Asma", page_icon="🫁", layout="centered")
 
-# CSS personalizado para colores específicos y botones táctiles
+# Función para obtener fecha y hora exactas de Chile (America/Santiago)
+def obtener_ahora_chile():
+    tz = pytz.timezone('America/Santiago')
+    return datetime.now(tz)
+
+# CSS para forzar tema claro, contraste y estilos de botones
 st.markdown("""
     <style>
-    /* Forzar fondo blanco */
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
     }
     
-    /* Contenedores claros */
     [data-testid="stExpander"], div[role="radiogroup"], .stSelectbox, .stMultiSelect {
         background-color: #F8F9FA !important;
         border-radius: 10px !important;
         padding: 5px !important;
     }
 
-    /* Botones generales */
     .stButton > button {
         width: 100% !important;
         height: 60px !important;
@@ -30,28 +33,28 @@ st.markdown("""
         font-weight: bold !important;
         border-radius: 12px !important;
         margin-top: 5px;
-        margin-bottom: 5px;
+        margin-bottom: 10px;
         border: none !important;
     }
     
-    /* Estilos de botones rápidos de tiempo real */
+    /* Botón Inicio Verde */
     div.stButton > button[key="btn_now_in"] {
-        background-color: #2E7D32 !important; /* Verde claro/fuerte para inicio */
+        background-color: #2E7D32 !important;
         color: white !important;
     }
     
+    /* Botón Término Celeste */
     div.stButton > button[key="btn_now_fi"] {
-        background-color: #0288D1 !important; /* Celeste / Azul alivio para término */
+        background-color: #0288D1 !important;
         color: white !important;
     }
 
-    /* Botón de guardado final */
+    /* Botón Guardar Final Azul */
     div.stButton > button[key="btn_save_final"] {
         background-color: #1565C0 !important;
         color: white !important;
     }
     
-    /* Textos accesibles */
     label, .stRadio p, .stSelectbox p, .stMultiSelect p, p, h1, h2, h3, span {
         font-size: 18px !important;
         font-weight: 600 !important;
@@ -72,16 +75,18 @@ def cargar_datos(filename, columnas):
         return pd.read_csv(filename)
     return pd.DataFrame(columns=columnas)
 
-# Inicializar estados de hora en la sesión si no existen
+# Inicializar marcas de tiempo con hora local de Chile
+ahora_cl = obtener_ahora_chile()
+
 if "hora_inicio_auto" not in st.session_state:
-    st.session_state["hora_inicio_auto"] = datetime.now().time()
+    st.session_state["hora_inicio_auto"] = ahora_cl.time()
 if "fecha_inicio_auto" not in st.session_state:
-    st.session_state["fecha_inicio_auto"] = datetime.now().date()
+    st.session_state["fecha_inicio_auto"] = ahora_cl.date()
 
 if "hora_termino_auto" not in st.session_state:
-    st.session_state["hora_termino_auto"] = datetime.now().time()
+    st.session_state["hora_termino_auto"] = ahora_cl.time()
 if "fecha_termino_auto" not in st.session_state:
-    st.session_state["fecha_termino_auto"] = datetime.now().date()
+    st.session_state["fecha_termino_auto"] = ahora_cl.date()
 
 # --- 2. DICCIONARIO MULTIIDIOMA ---
 DICCIONARIO = {
@@ -168,28 +173,21 @@ with st.expander(txt["perfil_tit"], expanded=df_user.empty):
 if not df_user.empty:
     st.info(f"**Paciente:** {df_user['Nombre'].iloc[0]} | **Diagnóstico:** {df_user['Enfermedad'].iloc[0]}")
 
-# --- 4. MÓDULO REGISTRO DE EPISODIOS CON BOTONES RÁPIDOS ---
+# --- 4. MÓDULO REGISTRO DE EPISODIOS ---
 st.header(txt["reg_tit"])
 
-# Botones de un solo toque para marca temporal en tiempo real
-col_btn1, col_btn2 = st.columns(2)
-with col_btn1:
-    if st.button(txt["btn_inicio_ahora"], key="btn_now_in"):
-        st.session_state["hora_inicio_auto"] = datetime.now().time()
-        st.session_state["fecha_inicio_auto"] = datetime.now().date()
-        st.toast("🟢 Hora de inicio capturada automáticamente", icon="⏱️")
-
-with col_btn2:
-    if st.button(txt["btn_termino_ahora"], key="btn_now_fi"):
-        st.session_state["hora_termino_auto"] = datetime.now().time()
-        st.session_state["fecha_termino_auto"] = datetime.now().date()
-        st.toast("🩵 Hora de término capturada automáticamente", icon="✨")
+# 1. BOTÓN DE INICIO (Ubicado al principio del módulo de registro)
+if st.button(txt["btn_inicio_ahora"], key="btn_now_in"):
+    ahora = obtener_ahora_chile()
+    st.session_state["hora_inicio_auto"] = ahora.time()
+    st.session_state["fecha_inicio_auto"] = ahora.date()
+    st.toast("🟢 Hora de inicio capturada automáticamente", icon="⏱️")
 
 cols_ep = ["Fecha_Inicio", "Hora_Inicio", "Fecha_Termino", "Hora_Termino", "Sintomas", "Malestar_Inicio", "Malestar_Termino", "Medicamento", "Puffs", "Ubicacion", "Observaciones"]
 df_ep = cargar_datos(EPISODES_DB, cols_ep)
 
 with st.form("form_episodio", clear_on_submit=False):
-    st.markdown("### 🕒 Tiempos del Episodio (Ajuste Manual si requiere)")
+    st.markdown("### 🕒 Tiempos y Síntomas de Inicio")
     
     col_t1, col_t2 = st.columns(2)
     with col_t1:
@@ -198,22 +196,29 @@ with st.form("form_episodio", clear_on_submit=False):
         m_in = st.selectbox(txt["malestar_in"], list(range(1, 11)), index=4)
         
     with col_t2:
-        f_fi = st.date_input("Fecha Término", st.session_state["fecha_termino_auto"])
-        h_fi = st.time_input("Hora Término", st.session_state["hora_termino_auto"])
-        m_fi = st.selectbox(txt["malestar_fi"], list(range(1, 11)), index=1)
+        sintomas_sel = st.multiselect(
+            txt["sintoma"], 
+            options=txt["sintomas_lista"],
+            default=[txt["sintomas_lista"][0]]
+        )
 
-    st.markdown("---")
-    sintomas_sel = st.multiselect(
-        txt["sintoma"], 
-        options=txt["sintomas_lista"],
-        default=[txt["sintomas_lista"][0]]
-    )
-    
     st.markdown(f"### {txt['med_tit']}")
     med = st.selectbox("Medicamento / Medication", ["Salbutamol / Rescate", "Inhalador Corticoide", "Corticoide Oral", "Ninguno", "Otro"])
     puffs = st.radio(txt["puffs"], ["0", "1 Puff", "2 Puffs", "3+ Puffs"], horizontal=True, index=2)
     
     ubicacion = st.text_input(txt["ubicacion"], value="Casa / Home")
+    
+    # 2. BOTÓN DE TÉRMINO / ALIVIO (Ubicado después de Entorno/Ubicación y antes de Observaciones)
+    st.markdown("---")
+    st.markdown("### 🩵 Término del Episodio (Cierre)")
+    
+    col_f1, col_f2 = st.columns(2)
+    with col_f1:
+        f_fi = st.date_input("Fecha Término", st.session_state["fecha_termino_auto"])
+        h_fi = st.time_input("Hora Término", st.session_state["hora_termino_auto"])
+    with col_f2:
+        m_fi = st.selectbox(txt["malestar_fi"], list(range(1, 11)), index=1)
+        
     obs = st.text_area(txt["obs"])
     
     if st.form_submit_button(txt["btn_guardar"], key="btn_save_final"):
@@ -237,6 +242,13 @@ with st.form("form_episodio", clear_on_submit=False):
         guardar_datos(df_final, EPISODES_DB)
         st.success("¡Episodio guardado exitosamente en la bitácora!")
         st.rerun()
+
+# 3. BOTÓN DE TÉRMINO DIRECTO EN LA INTERFAZ
+if st.button(txt["btn_termino_ahora"], key="btn_now_fi"):
+    ahora = obtener_ahora_chile()
+    st.session_state["hora_termino_auto"] = ahora.time()
+    st.session_state["fecha_termino_auto"] = ahora.date()
+    st.toast("🩵 Hora de término capturada automáticamente", icon="✨")
 
 # --- 5. MÓDULO HISTORIAL Y DESCARGA ---
 st.header(txt["historial_tit"])
