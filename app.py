@@ -6,7 +6,7 @@ import os
 # --- 1. CONFIGURACIÓN DE PÁGINA E INTERFAZ ---
 st.set_page_config(page_title="Control de Asma", page_icon="🫁", layout="centered")
 
-# Inyección de CSS forzado para evitar el fondo negro por modo oscuro en móviles
+# Inyección de CSS para forzar fondo claro, texto oscuro y botones adaptados
 st.markdown("""
     <style>
     /* Forzar fondo blanco y texto oscuro en toda la app */
@@ -15,14 +15,14 @@ st.markdown("""
         color: #1A1A1A !important;
     }
     
-    /* Forzar contenedores y tarjetas en fondo claro */
-    [data-testid="stExpander"], div[role="radiogroup"], .stSelectbox {
+    /* Contenedores y tarjetas en fondo claro */
+    [data-testid="stExpander"], div[role="radiogroup"], .stSelectbox, .stMultiSelect {
         background-color: #F8F9FA !important;
         border-radius: 10px !important;
         padding: 5px !important;
     }
 
-    /* Botones generales grandes con excelente visibilidad */
+    /* Botones generales grandes */
     .stButton > button {
         width: 100% !important;
         height: 60px !important;
@@ -40,7 +40,7 @@ st.markdown("""
     }
     
     /* Textos y etiquetas adaptadas para lectura fácil */
-    label, .stRadio p, .stSelectbox p, p, h1, h2, h3, span {
+    label, .stRadio p, .stSelectbox p, .stMultiSelect p, p, h1, h2, h3, span {
         font-size: 18px !important;
         font-weight: 600 !important;
         color: #1A1A1A !important;
@@ -67,7 +67,16 @@ DICCIONARIO = {
         "subtitulo": "Registro rápido de crisis y medicación",
         "perfil_tit": "👤 Perfil del Paciente",
         "reg_tit": "🚨 Registrar Episodio",
-        "sintoma": "Síntoma principal",
+        "sintoma": "Síntomas presentes (puedes seleccionar varios):",
+        "sintomas_lista": [
+            "Dificultad para respirar (Disnea)",
+            "Exceso de secreciones / Flemas",
+            "Tos persistente",
+            "Silbido en el pecho (Sibilancias)",
+            "Opresión en el pecho",
+            "Fatiga o cansancio extremo",
+            "Otro"
+        ],
         "malestar_in": "Malestar al INICIO (1-10)",
         "malestar_fi": "Malestar al TÉRMINO (1-10)",
         "med_tit": "💊 Medicación aplicada",
@@ -83,7 +92,16 @@ DICCIONARIO = {
         "subtitulo": "Quick flare-up & medication tracker",
         "perfil_tit": "👤 Patient Profile",
         "reg_tit": "🚨 Log Flare-Up",
-        "sintoma": "Main symptom",
+        "sintoma": "Symptoms present (select multiple):",
+        "sintomas_lista": [
+            "Shortness of breath",
+            "Excess mucus / Phlegm",
+            "Persistent cough",
+            "Wheezing",
+            "Chest tightness",
+            "Extreme fatigue",
+            "Other"
+        ],
         "malestar_in": "Discomfort at START (1-10)",
         "malestar_fi": "Discomfort at END (1-10)",
         "med_tit": "💊 Medication taken",
@@ -126,11 +144,16 @@ if not df_user.empty:
 
 # --- 4. MÓDULO REGISTRO DE EPISODIOS ---
 st.header(txt["reg_tit"])
-cols_ep = ["Fecha", "Hora_Inicio", "Hora_Termino", "Sintoma", "Malestar_Inicio", "Malestar_Termino", "Medicamento", "Puffs", "Ubicacion", "Observaciones"]
+cols_ep = ["Fecha", "Hora_Inicio", "Hora_Termino", "Sintomas", "Malestar_Inicio", "Malestar_Termino", "Medicamento", "Puffs", "Ubicacion", "Observaciones"]
 df_ep = cargar_datos(EPISODES_DB, cols_ep)
 
 with st.form("form_episodio", clear_on_submit=True):
-    sintoma = st.selectbox(txt["sintoma"], ["Dificultad para respirar / Shortness of breath", "Exceso de secreciones / Cough & mucus", "Sibilancias / Wheezing", "Otro / Other"])
+    # Selección múltiple de síntomas
+    sintomas_sel = st.multiselect(
+        txt["sintoma"], 
+        options=txt["sintomas_lista"],
+        default=[txt["sintomas_lista"][0]]
+    )
     
     col1, col2 = st.columns(2)
     with col1:
@@ -148,11 +171,14 @@ with st.form("form_episodio", clear_on_submit=True):
     obs = st.text_area(txt["obs"])
     
     if st.form_submit_button(txt["btn_guardar"]):
+        # Unir los síntomas seleccionados en un solo texto separado por comas
+        str_sintomas = ", ".join(sintomas_sel) if sintomas_sel else "No especificado"
+        
         nueva_fila = pd.DataFrame([[
             datetime.now().strftime("%Y-%m-%d"),
             h_in.strftime("%H:%M"),
             h_fi.strftime("%H:%M"),
-            sintoma,
+            str_sintomas,
             m_in,
             m_fi,
             med,
