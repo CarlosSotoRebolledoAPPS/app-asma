@@ -6,40 +6,52 @@ import os
 # --- 1. CONFIGURACIÓN DE PÁGINA E INTERFAZ ---
 st.set_page_config(page_title="Control de Asma", page_icon="🫁", layout="centered")
 
-# Inyección de CSS para forzar fondo claro, texto oscuro y botones adaptados
+# CSS personalizado para colores específicos y botones táctiles
 st.markdown("""
     <style>
-    /* Forzar fondo blanco y texto oscuro en toda la app */
+    /* Forzar fondo blanco */
     .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
     }
     
-    /* Contenedores y tarjetas en fondo claro */
+    /* Contenedores claros */
     [data-testid="stExpander"], div[role="radiogroup"], .stSelectbox, .stMultiSelect {
         background-color: #F8F9FA !important;
         border-radius: 10px !important;
         padding: 5px !important;
     }
 
-    /* Botones generales grandes */
+    /* Botones generales */
     .stButton > button {
         width: 100% !important;
         height: 60px !important;
-        font-size: 20px !important;
+        font-size: 18px !important;
         font-weight: bold !important;
         border-radius: 12px !important;
         margin-top: 5px;
         margin-bottom: 5px;
+        border: none !important;
     }
     
-    /* Estilo del botón principal de guardado */
-    div.stButton > button:first-child {
-        background-color: #2E7D32 !important;
+    /* Estilos de botones rápidos de tiempo real */
+    div.stButton > button[key="btn_now_in"] {
+        background-color: #2E7D32 !important; /* Verde claro/fuerte para inicio */
         color: white !important;
     }
     
-    /* Textos y etiquetas adaptadas para lectura fácil */
+    div.stButton > button[key="btn_now_fi"] {
+        background-color: #0288D1 !important; /* Celeste / Azul alivio para término */
+        color: white !important;
+    }
+
+    /* Botón de guardado final */
+    div.stButton > button[key="btn_save_final"] {
+        background-color: #1565C0 !important;
+        color: white !important;
+    }
+    
+    /* Textos accesibles */
     label, .stRadio p, .stSelectbox p, .stMultiSelect p, p, h1, h2, h3, span {
         font-size: 18px !important;
         font-weight: 600 !important;
@@ -48,7 +60,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Archivos de datos locales para la marcha blanca
+# Archivos de datos
 USER_DB = "perfil_usuario.csv"
 EPISODES_DB = "bitacora_episodios.csv"
 
@@ -60,6 +72,17 @@ def cargar_datos(filename, columnas):
         return pd.read_csv(filename)
     return pd.DataFrame(columns=columnas)
 
+# Inicializar estados de hora en la sesión si no existen
+if "hora_inicio_auto" not in st.session_state:
+    st.session_state["hora_inicio_auto"] = datetime.now().time()
+if "fecha_inicio_auto" not in st.session_state:
+    st.session_state["fecha_inicio_auto"] = datetime.now().date()
+
+if "hora_termino_auto" not in st.session_state:
+    st.session_state["hora_termino_auto"] = datetime.now().time()
+if "fecha_termino_auto" not in st.session_state:
+    st.session_state["fecha_termino_auto"] = datetime.now().date()
+
 # --- 2. DICCIONARIO MULTIIDIOMA ---
 DICCIONARIO = {
     "ES": {
@@ -67,7 +90,9 @@ DICCIONARIO = {
         "subtitulo": "Registro rápido de crisis y medicación",
         "perfil_tit": "👤 Perfil del Paciente",
         "reg_tit": "🚨 Registrar Episodio",
-        "sintoma": "Síntomas presentes (puedes seleccionar varios):",
+        "btn_inicio_ahora": "🟢 INICIAR CRISIS AHORA",
+        "btn_termino_ahora": "🩵 TERMINAR CRISIS AHORA (ALIVIO)",
+        "sintoma": "Síntomas presentes (selección múltiple):",
         "sintomas_lista": [
             "Dificultad para respirar (Disnea)",
             "Exceso de secreciones / Flemas",
@@ -83,7 +108,7 @@ DICCIONARIO = {
         "puffs": "Cantidad de Puffs",
         "ubicacion": "Entorno / Ubicación",
         "obs": "Observaciones breves",
-        "btn_guardar": "✅ GUARDAR EPISODIO",
+        "btn_guardar": "💾 GUARDAR EN BITÁCORA",
         "historial_tit": "📊 Bitácora para el Médico",
         "descargar": "📥 Descargar Reporte (CSV)"
     },
@@ -92,6 +117,8 @@ DICCIONARIO = {
         "subtitulo": "Quick flare-up & medication tracker",
         "perfil_tit": "👤 Patient Profile",
         "reg_tit": "🚨 Log Flare-Up",
+        "btn_inicio_ahora": "🟢 START FLARE-UP NOW",
+        "btn_termino_ahora": "🩵 END FLARE-UP NOW (RELIEF)",
         "sintoma": "Symptoms present (select multiple):",
         "sintomas_lista": [
             "Shortness of breath",
@@ -108,13 +135,12 @@ DICCIONARIO = {
         "puffs": "Puff count",
         "ubicacion": "Environment / Location",
         "obs": "Brief notes",
-        "btn_guardar": "✅ SAVE EPISODE",
+        "btn_guardar": "💾 SAVE TO LOG",
         "historial_tit": "📊 Doctor's Log",
         "descargar": "📥 Download Report (CSV)"
     }
 }
 
-# Selector de idioma en barra lateral
 lang_choice = st.sidebar.selectbox("🌐 Idioma / Language", ["Español", "English"])
 lang = "ES" if lang_choice == "Español" else "EN"
 txt = DICCIONARIO[lang]
@@ -142,26 +168,46 @@ with st.expander(txt["perfil_tit"], expanded=df_user.empty):
 if not df_user.empty:
     st.info(f"**Paciente:** {df_user['Nombre'].iloc[0]} | **Diagnóstico:** {df_user['Enfermedad'].iloc[0]}")
 
-# --- 4. MÓDULO REGISTRO DE EPISODIOS ---
+# --- 4. MÓDULO REGISTRO DE EPISODIOS CON BOTONES RÁPIDOS ---
 st.header(txt["reg_tit"])
-cols_ep = ["Fecha", "Hora_Inicio", "Hora_Termino", "Sintomas", "Malestar_Inicio", "Malestar_Termino", "Medicamento", "Puffs", "Ubicacion", "Observaciones"]
+
+# Botones de un solo toque para marca temporal en tiempo real
+col_btn1, col_btn2 = st.columns(2)
+with col_btn1:
+    if st.button(txt["btn_inicio_ahora"], key="btn_now_in"):
+        st.session_state["hora_inicio_auto"] = datetime.now().time()
+        st.session_state["fecha_inicio_auto"] = datetime.now().date()
+        st.toast("🟢 Hora de inicio capturada automáticamente", icon="⏱️")
+
+with col_btn2:
+    if st.button(txt["btn_termino_ahora"], key="btn_now_fi"):
+        st.session_state["hora_termino_auto"] = datetime.now().time()
+        st.session_state["fecha_termino_auto"] = datetime.now().date()
+        st.toast("🩵 Hora de término capturada automáticamente", icon="✨")
+
+cols_ep = ["Fecha_Inicio", "Hora_Inicio", "Fecha_Termino", "Hora_Termino", "Sintomas", "Malestar_Inicio", "Malestar_Termino", "Medicamento", "Puffs", "Ubicacion", "Observaciones"]
 df_ep = cargar_datos(EPISODES_DB, cols_ep)
 
-with st.form("form_episodio", clear_on_submit=True):
-    # Selección múltiple de síntomas
+with st.form("form_episodio", clear_on_submit=False):
+    st.markdown("### 🕒 Tiempos del Episodio (Ajuste Manual si requiere)")
+    
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        f_in = st.date_input("Fecha Inicio", st.session_state["fecha_inicio_auto"])
+        h_in = st.time_input("Hora Inicio", st.session_state["hora_inicio_auto"])
+        m_in = st.selectbox(txt["malestar_in"], list(range(1, 11)), index=4)
+        
+    with col_t2:
+        f_fi = st.date_input("Fecha Término", st.session_state["fecha_termino_auto"])
+        h_fi = st.time_input("Hora Término", st.session_state["hora_termino_auto"])
+        m_fi = st.selectbox(txt["malestar_fi"], list(range(1, 11)), index=1)
+
+    st.markdown("---")
     sintomas_sel = st.multiselect(
         txt["sintoma"], 
         options=txt["sintomas_lista"],
         default=[txt["sintomas_lista"][0]]
     )
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        h_in = st.time_input("Hora Inicio", datetime.now().time())
-        m_in = st.selectbox(txt["malestar_in"], list(range(1, 11)), index=4)
-    with col2:
-        h_fi = st.time_input("Hora Término", datetime.now().time())
-        m_fi = st.selectbox(txt["malestar_fi"], list(range(1, 11)), index=1)
     
     st.markdown(f"### {txt['med_tit']}")
     med = st.selectbox("Medicamento / Medication", ["Salbutamol / Rescate", "Inhalador Corticoide", "Corticoide Oral", "Ninguno", "Otro"])
@@ -170,13 +216,13 @@ with st.form("form_episodio", clear_on_submit=True):
     ubicacion = st.text_input(txt["ubicacion"], value="Casa / Home")
     obs = st.text_area(txt["obs"])
     
-    if st.form_submit_button(txt["btn_guardar"]):
-        # Unir los síntomas seleccionados en un solo texto separado por comas
+    if st.form_submit_button(txt["btn_guardar"], key="btn_save_final"):
         str_sintomas = ", ".join(sintomas_sel) if sintomas_sel else "No especificado"
         
         nueva_fila = pd.DataFrame([[
-            datetime.now().strftime("%Y-%m-%d"),
+            f_in.strftime("%Y-%m-%d"),
             h_in.strftime("%H:%M"),
+            f_fi.strftime("%Y-%m-%d"),
             h_fi.strftime("%H:%M"),
             str_sintomas,
             m_in,
@@ -189,7 +235,7 @@ with st.form("form_episodio", clear_on_submit=True):
         
         df_final = pd.concat([df_ep, nueva_fila], ignore_index=True)
         guardar_datos(df_final, EPISODES_DB)
-        st.success("¡Registrado!")
+        st.success("¡Episodio guardado exitosamente en la bitácora!")
         st.rerun()
 
 # --- 5. MÓDULO HISTORIAL Y DESCARGA ---
