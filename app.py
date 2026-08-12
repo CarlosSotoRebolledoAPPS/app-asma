@@ -1,3 +1,23 @@
+El error `StreamlitAPIException` ocurre porque **Streamlit prohíbe modificar una clave de `st.session_state` (como `st.session_state["f_in"]`) en el mismo flujo donde esa clave ya está vinculada a un widget activo** (como `st.date_input(..., key="f_in")`).
+
+Al presionar el botón de guardar y llamar a `resetear_formulario()`, Streamlit detecta que intentamos sobrescribir una clave de widget que ya fue desplegada en pantalla, lo que provoca la excepción.
+
+---
+
+### Solución
+
+Para corregirlo de forma robusta y limpia:
+
+1. Usaremos **`st.rerun()`** con una marca de reinicio en el estado de la sesión (`st.session_state["reset_flag"] = True`), permitiendo que el formulario se limpie al inicio del siguiente ciclo de renderizado de manera segura.
+2. Evitamos sobrescribir variables de widgets que están en pantalla.
+
+---
+
+### Código actualizado para `app.py`
+
+Copia y reemplaza el código en tu archivo `app.py`:
+
+```python
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -90,10 +110,8 @@ def cargar_datos(filename, columnas):
         return pd.read_csv(filename)
     return pd.DataFrame(columns=columnas)
 
-# --- 3. INICIALIZACIÓN Y RESET DE ESTADO DEL FORMULARIO ---
-ahora_cl = obtener_ahora_chile()
-
-def resetear_formulario():
+# --- 3. INICIALIZACIÓN DE ESTADO Y RESET SEGURO ---
+def resetear_estado():
     ahora = obtener_ahora_chile()
     st.session_state["f_in"] = ahora.date()
     st.session_state["h_in"] = ahora.time()
@@ -107,8 +125,10 @@ def resetear_formulario():
     st.session_state["m_fi"] = 2
     st.session_state["obs"] = ""
 
-if "f_in" not in st.session_state:
-    resetear_formulario()
+# Si se solicitó un reset en el ciclo anterior o es la primera carga:
+if st.session_state.get("necesita_reset", False) or "f_in" not in st.session_state:
+    resetear_estado()
+    st.session_state["necesita_reset"] = False
 
 # Diccionario Multiidioma
 DICCIONARIO = {
@@ -186,12 +206,15 @@ tab_reg, tab_bit, tab_per = st.tabs([txt["tab_registro"], txt["tab_bitacora"], t
 
 # ==================== PESTAÑA 1: REGISTRO DE CRISIS ====================
 with tab_reg:
+    if st.session_state.get("guardado_exitoso", False):
+        st.success("✅ ¡Registro guardado exitosamente en la bitácora!")
+        st.session_state["guardado_exitoso"] = False
+
     # 1. BOTÓN SUPERIOR DE INICIO
     if st.button(txt["btn_inicio_ahora"], key="btn_now_in"):
         ahora = obtener_ahora_chile()
         st.session_state["f_in"] = ahora.date()
         st.session_state["h_in"] = ahora.time()
-        st.toast("🟢 Fecha y hora de inicio capturadas automáticamente", icon="⏱️")
         st.rerun()
 
     st.markdown("### ⏱️ Datos del Inicio")
@@ -221,7 +244,6 @@ with tab_reg:
         ahora = obtener_ahora_chile()
         st.session_state["f_fi"] = ahora.date()
         st.session_state["h_fi"] = ahora.time()
-        st.toast("🩵 Fecha y hora de término capturadas", icon="✨")
         st.rerun()
 
     st.markdown("### 🩵 Datos del Término")
@@ -235,7 +257,7 @@ with tab_reg:
     st.markdown("---")
     obs_val = st.text_area(txt["obs"], placeholder="Escribe notas relevantes aquí...", key="obs")
 
-    # 3. GUARDADO Y LIMPIEZA DE FORMULARIO
+    # 3. GUARDADO Y MARCA DE LIMPIEZA
     if st.button(txt["btn_guardar"], key="btn_save_final"):
         str_sintomas = ", ".join(sintomas_val) if sintomas_val else "Ninguno reportado"
         
@@ -256,9 +278,9 @@ with tab_reg:
         df_final = pd.concat([df_ep, nueva_fila], ignore_index=True)
         guardar_datos(df_final, EPISODES_DB)
         
-        # Limpieza de formulario
-        resetear_formulario()
-        st.success("✅ ¡Registro guardado exitosamente en la bitácora!")
+        # Marcar para resetear en la siguiente recarga
+        st.session_state["necesita_reset"] = True
+        st.session_state["guardado_exitoso"] = True
         st.rerun()
 
 # ==================== PESTAÑA 2: BITÁCORA Y MÉTRICAS ====================
@@ -304,3 +326,5 @@ with tab_per:
     if not df_user.empty:
         st.markdown("---")
         st.info(f"**Paciente registrado:** {df_user['Nombre'].iloc[0]} | **Diagnóstico:** {df_user['Enfermedad'].iloc[0]}")
+
+```
