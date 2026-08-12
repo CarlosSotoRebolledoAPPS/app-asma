@@ -1,23 +1,3 @@
-El error `StreamlitAPIException` ocurre porque **Streamlit prohíbe modificar una clave de `st.session_state` (como `st.session_state["f_in"]`) en el mismo flujo donde esa clave ya está vinculada a un widget activo** (como `st.date_input(..., key="f_in")`).
-
-Al presionar el botón de guardar y llamar a `resetear_formulario()`, Streamlit detecta que intentamos sobrescribir una clave de widget que ya fue desplegada en pantalla, lo que provoca la excepción.
-
----
-
-### Solución
-
-Para corregirlo de forma robusta y limpia:
-
-1. Usaremos **`st.rerun()`** con una marca de reinicio en el estado de la sesión (`st.session_state["reset_flag"] = True`), permitiendo que el formulario se limpie al inicio del siguiente ciclo de renderizado de manera segura.
-2. Evitamos sobrescribir variables de widgets que están en pantalla.
-
----
-
-### Código actualizado para `app.py`
-
-Copia y reemplaza el código en tu archivo `app.py`:
-
-```python
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -326,5 +306,3 @@ with tab_per:
     if not df_user.empty:
         st.markdown("---")
         st.info(f"**Paciente registrado:** {df_user['Nombre'].iloc[0]} | **Diagnóstico:** {df_user['Enfermedad'].iloc[0]}")
-
-```
